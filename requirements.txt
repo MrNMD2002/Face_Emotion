@@ -1,0 +1,24 @@
+# Core
+numpy>=1.24.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
+
+# PyTorch (CPU version — server sẽ cài GPU version riêng)
+# torch>=2.1.0
+# torchvision>=0.16.0
+# torchaudio>=2.1.0
+
+# Audio
+librosa>=0.10.0
+sounddevice>=0.4.6
+
+# Vision / Inference
+opencv-python>=4.8.0
+onnxruntime-gpu>=1.16.0
+
+# Training utils
+matplotlib>=3.7.0
+seaborn>=0.12.0
+tqdm>=4.65.0
+Pillow>=10.0.0
+pandas>=2.0.0

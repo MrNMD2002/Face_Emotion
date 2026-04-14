@@ -1,0 +1,33 @@
+# Dataset (large ~1.2GB — download separately)
+dts/
+
+# PyTorch checkpoint (68MB — ONNX exports already in models/)
+models/best.pt
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Demo screenshots (generated at runtime)
+results/screenshot_*.png
+
+# Temp Office lock files
+~$*.pptx
+~$*.docx
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
