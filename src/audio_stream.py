@@ -223,15 +223,33 @@ class RealtimeAudioBuffer:
     Sliding window buffer cho real-time microphone input.
     Predict mỗi STRIDE giây.
     """
+    N_BANDS  = 28          # số cột spectrum
+    FFT_SIZE = 1024        # độ phân giải FFT
+
     def __init__(self, predictor, sr=SAMPLE_RATE,
                  window=DURATION, stride=0.5):
-        self.predictor = predictor
-        self.sr        = sr
-        self.window    = window
-        self.stride    = stride
-        self.buffer    = np.zeros(int(sr * window))
-        self.result    = ('neutral', 0.0,
-                          np.ones(7) / 7)   # default
+        self.predictor  = predictor
+        self.sr         = sr
+        self.window     = window
+        self.stride     = stride
+        self.buffer     = np.zeros(int(sr * window))
+        self.result     = ('neutral', 0.0,
+                           np.ones(7) / 7)   # default
+        self.volume     = 0.0                # RMS [0–1]
+        self.freq_bands = np.zeros(self.N_BANDS)  # spectrum [0–1] per band
+
+        # Bin edges chia theo log-scale (bỏ DC, lấy đến sr/2)
+        fft_freqs  = np.fft.rfftfreq(self.FFT_SIZE, d=1.0 / sr)
+        n_fft_bins = len(fft_freqs)
+        edges = np.logspace(
+            np.log10(max(fft_freqs[1], 80)),   # ~80 Hz
+            np.log10(sr / 2),                  # Nyquist
+            self.N_BANDS + 1
+        )
+        self._bin_edges = np.searchsorted(fft_freqs, edges).clip(1, n_fft_bins - 1)
+
+        # Smoothing — giữ 30% giá trị cũ để tránh nhảy quá giật
+        self._smooth = np.zeros(self.N_BANDS)
 
         self._running = False
         self._thread  = None
@@ -240,6 +258,36 @@ class RealtimeAudioBuffer:
         chunk = indata[:, 0]
         self.buffer = np.roll(self.buffer, -len(chunk))
         self.buffer[-len(chunk):] = chunk
+
+        # ── RMS volume ──────────────────────────
+        rms = float(np.sqrt(np.mean(chunk ** 2)))
+        self.volume = min(rms * 10, 1.0)
+
+        # ── FFT spectrum → N_BANDS ───────────────
+        # Zero-pad chunk lên FFT_SIZE
+        padded   = np.zeros(self.FFT_SIZE)
+        n        = min(len(chunk), self.FFT_SIZE)
+        padded[:n] = chunk[:n] * np.hanning(n)   # Hann window giảm spectral leak
+        mag      = np.abs(np.fft.rfft(padded))   # magnitude
+
+        bands = np.zeros(self.N_BANDS)
+        for i in range(self.N_BANDS):
+            lo, hi = self._bin_edges[i], self._bin_edges[i + 1]
+            if hi > lo:
+                bands[i] = np.mean(mag[lo:hi])
+            else:
+                bands[i] = mag[lo]
+
+        # Normalize + log-scale cho đẹp
+        bands = np.log1p(bands * 20)
+        peak  = bands.max()
+        if peak > 1e-6:
+            bands /= peak
+
+        # Smooth: 70% mới + 30% cũ
+        self._smooth = 0.7 * bands + 0.3 * self._smooth
+        self.freq_bands = self._smooth.copy()
+
         try:
             em, conf, probs = self.predictor.predict_from_audio(
                 self.buffer.copy(), sr=self.sr)
@@ -266,3 +314,11 @@ class RealtimeAudioBuffer:
 
     def get_result(self):
         return self.result
+
+    def get_volume(self):
+        """Trả về RMS volume mới nhất [0.0 – 1.0]."""
+        return self.volume
+
+    def get_freq_bands(self):
+        """Trả về spectrum [N_BANDS] float32 [0–1]."""
+        return self.freq_bands.copy()
